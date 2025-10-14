@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List Expansions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1.5rem;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .blog-post {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 1.5rem 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .blog-post:last-child {
+            border-bottom: none;
+        }
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .delete-btn, .like-btn {
+            color: white;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border: none;
+        }
+        .delete-btn {
+            background-color: #ef4444;
+        }
+        .delete-btn:hover {
+            background-color: #dc2626;
+        }
+        .like-btn {
+            background-color: #3b82f6;
+        }
+        .like-btn:hover {
+            background-color: #2563eb;
+        }
+        .likes-count {
+            font-weight: 600;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Blog List</h1>
+        
+        <!-- Login/Logout & User Info -->
+        <div id="login-section" class="flex justify-between items-center mb-6">
+            <div id="logged-in-user" class="hidden">
+                <p class="text-gray-700">Logged in as <span id="user-name" class="font-semibold"></span></p>
+                <button id="logout-btn" class="text-sm text-indigo-600 hover:underline">Logout</button>
+            </div>
+            <form id="login-form" class="flex space-x-2">
+                <input type="text" id="login-username" placeholder="Username" class="p-2 border rounded-md text-sm w-32" required>
+                <input type="password" id="login-password" placeholder="Password" class="p-2 border rounded-md text-sm w-32" required>
+                <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">Login</button>
+            </form>
+            <div id="login-status" class="mt-2 text-center text-sm hidden"></div>
+        </div>
+
+        <div id="main-content" class="hidden">
+            <!-- New Post Form -->
+            <div class="mb-8 border-t pt-6 border-gray-200">
+                <h2 class="text-xl font-semibold mb-4">Add a New Blog Post</h2>
+                <form id="add-blog-form" class="space-y-4">
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                        <input type="text" id="title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" required>
+                    </div>
+                    <div>
+                        <label for="content" class="block text-sm font-medium text-gray-700">Content</label>
+                        <textarea id="content" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" required></textarea>
+                    </div>
+                    <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Add Post</button>
+                </form>
+            </div>
+
+            <!-- Blog List -->
+            <div>
+                <h2 class="text-xl font-semibold mb-4">All Blogs</h2>
+                <div id="blog-list" class="space-y-4">
+                    <!-- Blog posts will be rendered here -->
+                </div>
+            </div>
+        </div>
+        <p id="loading-message" class="text-center text-gray-500">Loading...</p>
+
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3001/api';
+
+        const loginForm = document.getElementById('login-form');
+        const loggedInUserDiv = document.getElementById('logged-in-user');
+        const userNameSpan = document.getElementById('user-name');
+        const logoutBtn = document.getElementById('logout-btn');
+        const mainContentDiv = document.getElementById('main-content');
+        const loadingMessage = document.getElementById('loading-message');
+        const addBlogForm = document.getElementById('add-blog-form');
+        const blogListContainer = document.getElementById('blog-list');
+        const loginStatus = document.getElementById('login-status');
+
+        let user = null;
+
+        // Function to check local storage for a token and user details
+        const checkLoginState = () => {
+            const loggedUserJSON = window.localStorage.getItem('loggedBlogAppUser');
+            if (loggedUserJSON) {
+                user = JSON.parse(loggedUserJSON);
+                userNameSpan.textContent = user.name || user.username;
+                loginForm.classList.add('hidden');
+                loggedInUserDiv.classList.remove('hidden');
+                mainContentDiv.classList.remove('hidden');
+            } else {
+                user = null;
+                loginForm.classList.remove('hidden');
+                loggedInUserDiv.classList.add('hidden');
+                mainContentDiv.classList.add('hidden');
+            }
+            fetchAndRenderBlogs();
+        };
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('login-user').value;
+            const password = document.getElementById('login-password').value;
+            
+            loginStatus.classList.remove('hidden');
+            loginStatus.classList.remove('text-green-500', 'text-red-500');
+            loginStatus.textContent = 'Logging in...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Login failed');
+                }
+
+                const loggedInUser = await response.json();
+                window.localStorage.setItem('loggedBlogAppUser', JSON.stringify(loggedInUser));
+                checkLoginState();
+                loginStatus.textContent = 'Login successful!';
+                loginStatus.classList.add('text-green-500');
+            } catch (error) {
+                console.error('Login error:', error);
+                loginStatus.textContent = error.message;
+                loginStatus.classList.add('text-red-500');
+            }
+        });
+
+        // Handle logout
+        logoutBtn.addEventListener('click', () => {
+            window.localStorage.removeItem('loggedBlogAppUser');
+            checkLoginState();
+        });
+
+        // Function to fetch and render blogs
+        const fetchAndRenderBlogs = async () => {
+            loadingMessage.classList.remove('hidden');
+            try {
+                const response = await fetch(`${API_BASE_URL}/blogs`);
+                const blogs = await response.json();
+
+                blogListContainer.innerHTML = '';
+                if (blogs.length === 0) {
+                    blogListContainer.innerHTML = '<p class="text-center text-gray-500">No blogs to display.</p>';
+                } else {
+                    blogs.forEach(blog => {
+                        const postElement = document.createElement('div');
+                        postElement.className = 'blog-post';
+                        postElement.innerHTML = `
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-700">${blog.title}</h3>
+                                <p class="text-gray-600 mt-1">${blog.content}</p>
+                                <p class="text-sm text-gray-500 mt-2">Added by ${blog.user.name || blog.user.username}</p>
+                            </div>
+                            <div class="button-group">
+                                <span class="likes-count">${blog.likes} likes</span>
+                                <button class="like-btn" data-id="${blog.id}">Like</button>
+                                ${user && blog.user.id === user.id ? `
+                                    <button class="delete-btn bg-red-500 hover:bg-red-600" data-id="${blog.id}">Delete</button>
+                                ` : ''}
+                            </div>
+                        `;
+                        blogListContainer.appendChild(postElement);
+                    });
+                }
+            } catch (error) {
+                blogListContainer.innerHTML = `<p class="text-center text-red-500">Failed to fetch blogs. Is the server running?</p>`;
+                console.error('Error fetching blogs:', error);
+            } finally {
+                loadingMessage.classList.add('hidden');
+            }
+        };
+
+        // Handle adding a new blog post
+        addBlogForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/blogs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${user.token}`
+                    },
+                    body: JSON.stringify({ title, content })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to add blog post.');
+                }
+                
+                addBlogForm.reset();
+                fetchAndRenderBlogs();
+            } catch (error) {
+                console.error('Error adding blog:', error);
+                // Simple notification for user
+                alert(error.message);
+            }
+        });
+        
+        // Handle delete button click
+        blogListContainer.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('delete-btn')) {
+                if (!confirm('Are you sure you want to delete this blog post?')) return;
+                
+                const blogId = e.target.dataset.id;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/blogs/${blogId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${user.token}`
+                        }
+                    });
+
+                    if (response.status === 204) {
+                        fetchAndRenderBlogs(); // Refresh list after successful deletion
+                    } else {
+                        const error = await response.json();
+                        alert(`Error deleting post: ${error.error || response.statusText}`);
+                    }
+                } catch (error) {
+                    console.error('Error deleting blog:', error);
+                    alert('Network error. Failed to delete post.');
+                }
+            }
+        });
+
+        // Initial check and fetch
+        checkLoginState();
+
+    </script>
+</body>
+</html>

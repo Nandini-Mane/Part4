@@ -1,0 +1,14 @@
+{
+  "name": "blog-list-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+"scripts": {
+  "test": "node --test", 
+  "start": "node index.js",
+  "dev": "nodemon index.js"
+},
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
